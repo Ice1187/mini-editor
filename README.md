@@ -1,4 +1,8 @@
-# TODO
+# Mini Editor
+
+A mini editor written in C.
+
+## TODO
 - [x] compile and play with `kilo` program
 - [x] trace the code of `kilo`
     - [x] trace `editorRefreshScreen`
@@ -9,7 +13,7 @@
 - [x] read ECMA-48 to understand ANSI control codes
 - [ ] try to render a empty screen
 
-# Minimal PoC Requirement
+## Minimal PoC Requirement
 - capture signal `SIGWINCH` to handle window size change
 - put the terminal into *noncanonical input mode* for controlling all the inputs by our programs, instead of let OS handle the editing
     - maybe with [`cfmakeraw`](https://www.gnu.org/software/libc/manual/html_node/Noncanonical-Input.html#index-cfmakeraw)
@@ -23,11 +27,18 @@
 - on save: save the internal buffer to the editing file
 - on quit: disable RAW mode
 
-## Possible Cool Weird Features
+### Optional
+- no status bar
+- don't need to handle TAB
+- no syntax highlight
+- no line number
+- no search
+
+### Possible Cool Weird Features
 - EMCA-48 support vertical right-to-left line progression (section 6.1.1). So maybe a vertical right-to-left oriented editor will be cool. Combined with [wenyan-lang](https://github.com/wenyan-lang/wenyan?tab=readme-ov-file) would be a nice fit to write 文言古詩-style script.
 
-# Terminal Control Mode
-## Local Mode
+## Terminal Control Mode
+### Local Mode
 > These flags generally control higher-level aspects of input processing than the input modes flags described in Input Modes, such as echoing, signals, and the choice of canonical or noncanonical input.
 - `ICANON`: put terminal in canonical mode
 - `ECHO`: echo the received input
@@ -37,12 +48,12 @@
 - `DISCARD`: when the DISCARD is typed, all program output is discarded.
 - `ECHONL`: only work in canonical mode, so we don't need it, I think.
 
-## Control Mode
+### Control Mode
 > Seems to only affecting physical serial ports.
 - `CS8`: specify eight bits per byte. Usually only useful on physical serial ports.
 - `CREAD`: tell the hardware to read input from the terminal, or discard it. Usually only useful on physical serial ports.
 
-## Input Mode
+### Input Mode
 - `ICRNL`: when receive carriage return `\r` from input, send newline `\n` to output instead.
 - `INLCR`: when receive newline `\n` from input, send carriage return `\r` to output instead.
 - `INPCK`: enable input parity checking
@@ -50,21 +61,14 @@
 - `IXON`: if receives a STOP character, suspend output until a START character is received. In this case, the STOP and START characters are never passed to the application program. If this bit is not set, then START and STOP can be read as ordinary characters. For example, when `ixon` is set, `ctrl-v ctrl-q enter` show `^M` because enter is `^M`. But when unset it with `stty -ixon`, `ctrl-v ctrl-q enter` show `^Q` and enter because START (`^Q`) is read as ordinary character and not intercept by the kernel(?
     - START character can be set by `termios.c_cc[VSTART]`, which is usually ctrl-q; same for STOP, which is usually ctrl-s.
 
-## Output Mode
+### Output Mode
 - `OPOST`: output data is processed in some unspecified way so that it is displayed appropriately on the terminal device. If not set, the characters are sent as-is. For example, `stty -a` shows the terminal options in a well-formatted way, but if you set `stty -opost` and `stty -a` again, the `\n` doesn't automatically return to the beginning of the line, and, thus, mess up the display format.
 - `ONLCR`: convert the newline character `\n` on output into carriage return `\r` followed by linefeed `\n`. For example, `stty -onlcr` also cause `\n` to not automatically return to the beginning of the line and mess up the display format.
 - `OXTABS`: convert the tab characters `\t` on output into the appropriate number of spaces to emulate a tab stop every eight columns. For example, type `echo "a\tb"` and select the tab with mouse get a big chunk of one single space. But `stty oxtabs` then `echo "a\tb"`, the space become multiple single-char spaces.
 
-## Optional
-- no status bar
-- don't need to handle TAB
-- no syntax highlight
-- no line number
-- no search
-
-# ANSI Control Code Table
-- the control modes of kilo is set to 8 bit (by `raw.c_cflag |= (CS8)`)
+## ANSI Control Code Table
 - [my notes on ECMA-48](https://app.heptabase.com/fe2dcb7b-fdfc-4173-a112-aaa81e688360/card/6c9de788-1b27-4a16-9173-51af63b9da51)
+- the control modes of kilo is set to 8 bit (by `raw.c_cflag |= (CS8)`)
 
 code  |  hex  |  meaning
 ----- | ----- | --------
@@ -94,7 +98,7 @@ code  | control fn | meaning
 `[?25h` | SM         | show the cursor. Not in ECMA-48, see [wiki](https://en.wikipedia.org/wiki/ANSI_escape_code#SCP)
 
 
-# Reference
+## Reference
 - [The GNU C Library Reference Manual: Low-Level Terminal Interface](https://www.gnu.org/software/libc/manual/html_node/Low_002dLevel-Terminal-Interface.html)
     - ["Raw Mode" in BSD](https://www.gnu.org/software/libc/manual/html_node/Noncanonical-Input.html#index-cfmakeraw)
     - [Noncanonical Mode Example](https://www.gnu.org/software/libc/manual/html_node/Noncanon-Example.html)
