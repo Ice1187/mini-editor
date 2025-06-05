@@ -1,6 +1,6 @@
 # Mini Editor
 
-A mini editor written in C.
+A mini editor written from scratch.
 
 ## TODO
 - [x] compile and play with `kilo` program
