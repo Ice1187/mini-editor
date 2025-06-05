@@ -1,6 +1,6 @@
 # Mini Editor
 
-A mini editor written from scratch.
+A mini text editor written from scratch.
 
 ## TODO
 - [x] compile and play with `kilo` program
@@ -99,6 +99,7 @@ code  | control fn | meaning
 
 
 ## Reference
+- [Kilo](https://github.com/antirez/kilo/tree/master)
 - [The GNU C Library Reference Manual: Low-Level Terminal Interface](https://www.gnu.org/software/libc/manual/html_node/Low_002dLevel-Terminal-Interface.html)
     - ["Raw Mode" in BSD](https://www.gnu.org/software/libc/manual/html_node/Noncanonical-Input.html#index-cfmakeraw)
     - [Noncanonical Mode Example](https://www.gnu.org/software/libc/manual/html_node/Noncanon-Example.html)
