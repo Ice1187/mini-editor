@@ -11,10 +11,12 @@ A mini text editor written from scratch.
     - [x] read [Low-Level Terminal Interface](https://www.gnu.org/software/libc/manual/html_node/Low_002dLevel-Terminal-Interface.html)
 - [x] understand what is RAW mode and how it works
 - [x] read ECMA-48 to understand ANSI control codes
-- [ ] try to render a empty screen
+- [x] render a empty screen
+- [ ] open, read and render file
+- [ ] store content changes of editing file
+- [ ] write changes to the file
 
 ## Minimal PoC Requirement
-- capture signal `SIGWINCH` to handle window size change
 - put the terminal into *noncanonical input mode* for controlling all the inputs by our programs, instead of let OS handle the editing
     - maybe with [`cfmakeraw`](https://www.gnu.org/software/libc/manual/html_node/Noncanonical-Input.html#index-cfmakeraw)
     - see [the example in the doc](https://www.gnu.org/software/libc/manual/html_node/Noncanon-Example.html)
@@ -28,6 +30,7 @@ A mini text editor written from scratch.
 - on quit: disable RAW mode
 
 ### Optional
+- no resisze window (capture signal `SIGWINCH` to handle window size change)
 - no status bar
 - don't need to handle TAB
 - no syntax highlight
@@ -69,6 +72,7 @@ A mini text editor written from scratch.
 ## ANSI Control Code Table
 - [my notes on ECMA-48](https://app.heptabase.com/fe2dcb7b-fdfc-4173-a112-aaa81e688360/card/6c9de788-1b27-4a16-9173-51af63b9da51)
 - the control modes of kilo is set to 8 bit (by `raw.c_cflag |= (CS8)`)
+- `man console_codes` on Linux is useful
 
 code  |  hex  |  meaning
 ----- | ----- | --------
@@ -108,6 +112,7 @@ code  | control fn | meaning
 - `man termios`
 - `man tcgetattr`, `man tcsetattr`
 - `man stty`
+- `man console_codes`
 - `man TIOCSWINSZ`
 - [Plain Text - Dylan Beattie - NDC Copenhagen 2022](https://www.youtube.com/watch?v=gd5uJ7Nlvvo)
     - Great talk for understand "plain text" in the computer. It answers a lot of question for who never saw a teletypewriter, like why we need `\r` and `\n`, what does `ctrl-c`, the code design of ASCII, etc. A very interesting talk for anyone whose interested in how "plain text" evolved in the computer era.

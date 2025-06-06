@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
+#include <sys/ioctl.h>
+
+#define MOVE_CURSOR_TOP_LEFT "\x1b[H"
+#define ERASE_WHOLE_LINE "\x1b[2K"
+#define ERASE_AFTER_CURSOR "\x1b[0K"
+#define HIDE_CURSOR "\x1b[?25l"
+#define SHOW_CURSOR "\x1b[?25h"
 
 // TODO:
 // - [x] explore what c_lflag do we need
@@ -9,9 +16,13 @@
 // - [x] explore what c_oflag do we need
 // - [x] explore what c_iflag do we need
 // - [x] read ECMA-48 to understand ANSI control codes
-// - [ ] render a empty screen without reading any file
+// - [x] render a empty screen without reading any file
+// - [ ] open, read and render file
+// - [ ] store content changes of editing file
+// - [ ] write changes to the file
 
 struct termios saved_attributes;
+unsigned short ws_row, ws_col;
 
 void reset_input_mode (void) {
     tcsetattr (STDIN_FILENO, TCSANOW, &saved_attributes);
@@ -64,11 +75,52 @@ void set_input_mode (void) { /* {{{ */
     tcsetattr (STDIN_FILENO, TCSAFLUSH, &tattr);
 } /* }}} */
 
+void set_no_buffering() {/* {{{ */
+    int err;
+    err = setvbuf(stdout, NULL, _IONBF, 0);
+    if (err) {
+        fprintf(stderr, "setvbuf in set_no_buffering failed: %d\n", err);
+    }
+}/* }}} */
+
+void init() {
+    set_input_mode ();
+    set_no_buffering();
+}
+
+void update_window_size() {
+    int err;
+    struct winsize ws;
+
+    err = ioctl(STDIN_FILENO, TIOCGWINSZ, &ws);
+    if (err) {
+        fprintf(stderr, "ioctl in get_window_size failed: %d\n", err);
+        return;
+    }
+
+    ws_row = ws.ws_row;
+    ws_col = ws.ws_col;
+
+    /* printf("window size: %hd, %hd\n", ws_row, ws_col); */
+}
+
+void render_init_screen() {
+    update_window_size();
+
+    printf(HIDE_CURSOR MOVE_CURSOR_TOP_LEFT ERASE_WHOLE_LINE);
+
+    for (unsigned short r = 1; r < ws_row; r++)
+        printf("\n" ERASE_WHOLE_LINE "~");
+
+    printf(MOVE_CURSOR_TOP_LEFT SHOW_CURSOR);
+}
+
 int main (void)
 {
     char c;
 
-    set_input_mode ();
+    init();
+    render_init_screen();
 
     while (1)
     {
