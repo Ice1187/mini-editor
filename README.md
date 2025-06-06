@@ -12,7 +12,9 @@ A mini text editor written from scratch.
 - [x] understand what is RAW mode and how it works
 - [x] read ECMA-48 to understand ANSI control codes
 - [x] render a empty screen
-- [ ] open, read and render file
+- [x] move up/down/left/right on the empty screen
+- [x] open, read and render file
+- [ ] move and edit file
 - [ ] store content changes of editing file
 - [ ] write changes to the file
 
@@ -39,6 +41,11 @@ A mini text editor written from scratch.
 
 ### Possible Cool Weird Features
 - EMCA-48 support vertical right-to-left line progression (section 6.1.1). So maybe a vertical right-to-left oriented editor will be cool. Combined with [wenyan-lang](https://github.com/wenyan-lang/wenyan?tab=readme-ov-file) would be a nice fit to write 文言古詩-style script.
+
+## Challenges
+- How to store the editing content, both lines and chars in a line, for efficent insertion and deletion?
+    - *Gap Buffer* and *Chunked Arrays* seem to be the common option, but too complicated for this demo.
+    - => Just store a line as a char array and realloc each time it changed and store lines as an array of the pointers to each line.
 
 ## Terminal Control Mode
 ### Local Mode
