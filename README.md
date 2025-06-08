@@ -14,9 +14,15 @@ A mini text editor written from scratch.
 - [x] render a empty screen
 - [x] move up/down/left/right on the empty screen
 - [x] open, read and render file
-- [ ] move and edit file
+- [x] move in file
+- [x] edit file
+  - [x] insert (not newline): insert and realloc
+  - [x] delete (not newline): remove
+  - [x] delete newline
+  - [x] insert newline
 - [ ] store content changes of editing file
 - [ ] write changes to the file
+- [ ] maybe we dont need to record cursor position, just use CUD/T/L/R
 
 ## Minimal PoC Requirement
 - put the terminal into *noncanonical input mode* for controlling all the inputs by our programs, instead of let OS handle the editing
@@ -48,8 +54,10 @@ A mini text editor written from scratch.
     - => Just store a line as a char array and realloc each time it changed and store lines as an array of the pointers to each line.
 - Normal ESC and control code both start with `ESC`, how to distinguish them?
     - look ahead and push back? -> complicated
-    - set VMIN and VTIME properly
-    - set stdin to non-block
+    - set stdin to non-blocking -> does stdin default to non-blocking?
+    - => set VMIN and VTIME properly to control the behavior of `read(stdin)`
+- When an line is either empty or 1 char, the index of the editing position is 0. This causes the indexing to be comlicated and difficult to handle correctly.
+    - assume a line always has a `\n` at the end. Thus, the length of a line is always larger than 0. This also make inserting to the end of the line easy.
 
 ## Terminal Control Mode
 ### Local Mode
