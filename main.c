@@ -1,16 +1,27 @@
-#include <unistd.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <termios.h>
+#include <sys/errno.h>
 #include <sys/ioctl.h>
 
 #define LINE_ENLARGE_SIZE 128
+#define READ_INPUT_SIZE    10
 
-#define MOVE_CURSOR_TOP_LEFT "\x1b[H"
-#define ERASE_WHOLE_LINE "\x1b[2K"
-#define ERASE_AFTER_CURSOR "\x1b[0K"
-#define HIDE_CURSOR "\x1b[?25l"
-#define SHOW_CURSOR "\x1b[?25h"
+#define  MOVE_CURSOR_UP        "\x1b[A"
+#define  MOVE_CURSOR_DOWN      "\x1b[B"
+#define  MOVE_CURSOR_RIGHT     "\x1b[C"
+#define  MOVE_CURSOR_LEFT      "\x1b[D"
+#define  MOVE_CURSOR_TOP_LEFT  "\x1b[H"
+#define  ERASE_WHOLE_LINE      "\x1b[2K"
+#define  ERASE_AFTER_CURSOR    "\x1b[0K"
+#define  HIDE_CURSOR           "\x1b[?25l"
+#define  SHOW_CURSOR           "\x1b[?25h"
+
+#define ESC 0x1b
+#define CSI 0x5b
+#define EOT 0x04
 
 // TODO:
 // - [x] explore what c_lflag do we need
@@ -21,7 +32,8 @@
 // - [x] render a empty screen without reading any file
 // - [x] move up/down/left/right on the empty screen
 // - [x] open, read and render file
-// - [ ] move and edit file
+// - [x] move in file
+// - [ ] edit file
 // - [ ] store content changes of editing file
 // - [ ] write changes to the file
 
@@ -31,11 +43,20 @@ struct line_t {
     unsigned int len;
 };
 
+struct content_t {
+    struct line_t *lines;
+    unsigned int len;
+    unsigned int cap;
+};
 
 struct termios saved_attributes;
-unsigned short ws_row, ws_col;
-struct line_t *lines;
-unsigned int num_of_lines;
+
+unsigned short ws_row = 0, ws_col = 0;       // ws: window size
+unsigned short cur_row = -1, cur_col = - 1;  // cur: cursor
+unsigned   int ed_row = 0, ed_col = 0;      // ed: edit
+
+char *file_path = NULL;
+struct content_t content = {NULL, 0, 0};
 
 
 void reset_input_mode(void) {
@@ -82,8 +103,9 @@ void set_input_mode(void) { /* {{{ */
     //tattr.c_oflag &= ~(OPOST); // likely no difference on non-physical terminal
     // tattr.c_cflag |= (CS8 | CREAD); // likely no difference on non-physical terminal
     tattr.c_lflag &= ~(ICANON | ISIG | IEXTEN | ECHO);
-    tattr.c_cc[VMIN] = 1;
-    tattr.c_cc[VTIME] = 0;
+    // read wait (VTIME * 0.1) sec before return. if no char, it return 0
+    tattr.c_cc[VMIN] = 0;
+    tattr.c_cc[VTIME] = 1;
 
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &tattr) != 0) {
         fprintf(stderr, "[!] tcsetattr failed.\n");
@@ -96,22 +118,26 @@ void set_no_buffering(void) {/* {{{ */
 
     err = setvbuf(stdout, NULL, _IONBF, 0);
     if (err) {
-        fprintf(stderr, "setvbuf in set_no_buffering failed: %d\n", err);
+        fprintf(stderr, "Failed to set STDOUT to no buffering: %d\n", err);
         exit(EXIT_FAILURE);
     }
 }/* }}} */
 
-void init(void) {
+void init(char *fp) {/* {{{ */
+    ed_row = ed_col = 0;
+    cur_row = cur_col = 0;
+    file_path = fp;
+
     set_input_mode();
     set_no_buffering();
-}
+}/* }}} */
 
-void cleanup() {
-    for ( ; num_of_lines ; free((lines++)->buf), num_of_lines--);
-    free(lines);
-}
+void cleanup(void) {/* {{{ */
+    for ( ; content.len ; free((content.lines[--content.len]).buf) );
+    free(content.lines);
+}/* }}} */
 
-void update_window_size(void) {
+void update_window_size(void) {/* {{{ */
     int err;
     struct winsize ws;
 
@@ -125,91 +151,178 @@ void update_window_size(void) {
     ws_col = ws.ws_col;
 
     /* printf("window size: %hd, %hd\n", ws_row, ws_col); */
-}
+}/* }}} */
 
-void read_file_to_edit(const char *path) {
+void read_file_content_if_exist(void) {/* {{{ */
     FILE *fp = NULL;
     char *line = NULL;
     size_t line_cap = 0;
     ssize_t line_len = 0;
     unsigned int line_num = 0;
 
-    fp = fopen(path, "r");
-    if (!fp) {
-        fprintf(stderr, "Failed to read the file: %s\n", path);
-        exit(EXIT_FAILURE);
-    }
+    content.len = 0;
+    content.cap = LINE_ENLARGE_SIZE;
+    content.lines = calloc(content.cap, sizeof(struct line_t));
 
-    // FIXME: can be easier
-    lines = calloc(LINE_ENLARGE_SIZE, sizeof(struct line_t));
-    num_of_lines = LINE_ENLARGE_SIZE;
-    for (line_num = 0; (line_len = getline(&line, &line_cap, fp)) > 0; line_num++) {
-        if (line_num >= num_of_lines) {
-            lines = realloc(lines, (num_of_lines + LINE_ENLARGE_SIZE) * sizeof(struct line_t));
-            num_of_lines = num_of_lines + LINE_ENLARGE_SIZE;
+    fp = fopen(file_path, "r");
+    if (fp) {
+        for (line_num = 0; (line_len = getline(&line, &line_cap, fp)) > 0; line_num++) {
+            if (line_num >= content.cap) {
+                content.cap += LINE_ENLARGE_SIZE;
+                content.lines = realloc(content.lines, content.cap * sizeof(struct line_t));
+            }
+
+            // TODO: make sure every line end with newline
+            content.lines[line_num].buf = line;
+            content.lines[line_num].len = line_len;
+            content.len += 1;
+
+            line = NULL;   // FIXME: smell
+            line_cap = 0;
         }
 
-        lines[line_num].buf = line;
-        lines[line_num].len = line_len;
-
-        line = NULL;
-        line_cap = 0;
+        fclose(fp);
+    } else {
+        content.lines[0].buf = calloc(1, sizeof(char));
+        *(content.lines[0].buf) = '\n';
+        content.lines[0].len = 1;
+        content.len++;
     }
 
-    lines = realloc(lines, line_num * sizeof(struct line_t));
-    num_of_lines = line_num;
+}/* }}} */
 
-    fclose(fp);
+void update_cursor_pos_on_screen(void) {
+    // cursor position in control code is 1-index
+    printf("\x1b[%d;%dH", cur_row+1, cur_col+1);
 }
 
-void render_init_screen() {
-    update_window_size();
-
+void render_screen(void) {
     printf(HIDE_CURSOR);
 
-    // clean the whole screen
-    printf(MOVE_CURSOR_TOP_LEFT ERASE_WHOLE_LINE);
-    for (unsigned short r = 1; r < ws_row; r++)
-        printf("\n" ERASE_WHOLE_LINE);
-
-    // render content
     printf(MOVE_CURSOR_TOP_LEFT);
     for (unsigned short r = 0; r < ws_row; r++) {
-        if (r < num_of_lines) {
-            printf("%s", lines[r].buf);
+        if (r < content.len) {
+            printf("%s", content.lines[r].buf);
         } else {
             printf("~");
             printf((r == ws_row-1) ? "" : "\n");  // FIXME: smell
         }
     }
 
-    // put and show cursor
-    printf(MOVE_CURSOR_TOP_LEFT SHOW_CURSOR);
+    update_cursor_pos_on_screen();
+
+    printf(SHOW_CURSOR);
+}
+
+void render_init_screen(void) {
+    // set cursor position
+    cur_row = 0;
+    cur_col = 0;
+
+    update_window_size();
+
+    // clean the whole screen
+    printf(HIDE_CURSOR MOVE_CURSOR_TOP_LEFT ERASE_WHOLE_LINE);
+    for (unsigned short r = 1; r < ws_row; r++)
+        printf("\n" ERASE_WHOLE_LINE);
+
+    render_screen();
+}
+
+ssize_t process_CSI_code(const char *c, ssize_t i, const ssize_t sz) {
+    if (i == sz - 1) return i;
+    if (c[i] != CSI) return i;
+
+    i++;
+    switch (c[i]) {
+        case 'A':
+            /* printf(MOVE_CURSOR_UP); */
+            ed_row = (ed_row <= 0) ? 0 : (ed_row - 1);
+            ed_col = (ed_col >= content.lines[ed_row].len - 1) ? (content.lines[ed_row].len - 1) : ed_col;
+            cur_row = (cur_row <= 0) ? 0 : (cur_row - 1);
+            cur_col = (cur_col >= ed_col) ? ed_col : cur_col;
+            break;
+        case 'B':
+            /* printf(MOVE_CURSOR_DOWN); */
+            ed_row = (ed_row >= content.len - 1) ? (content.len - 1) : (ed_row + 1);
+            ed_col = (ed_col >= content.lines[ed_row].len - 1) ? (content.lines[ed_row].len - 1) : ed_col;
+            cur_row = (cur_row >= ws_row - 1) ? (ws_row - 1) : (
+                (cur_row >= ed_row) ? ed_row : (cur_row + 1)
+            );
+            cur_col = (cur_col >= ed_col) ? ed_col : cur_col;
+            break;
+        case 'C':
+            /* printf(MOVE_CURSOR_RIGHT); */
+            ed_col = (ed_col >= content.lines[ed_row].len - 1) ? (content.lines[ed_row].len - 1) : (ed_col + 1);
+            cur_col = (cur_col >= ws_col - 1) ? (ws_col - 1) : (
+                (cur_col >= ed_col) ? ed_col : (cur_col + 1)
+            );
+            break;
+        case 'D':
+            /* printf(MOVE_CURSOR_LEFT); */
+            ed_col = (ed_col <= 0) ? 0 : (ed_col - 1);
+            cur_col = (cur_col <= 0) ? 0 : (cur_col - 1);
+            break;
+        default:
+            printf("[%02hhx]\n", c[i]);
+            break;
+    }
+
+    return i;
+}
+
+bool process_keystroke(void) {
+    char c[READ_INPUT_SIZE] = {0};
+    ssize_t sz = 0;
+
+    while (!sz) sz = read(STDIN_FILENO, c, READ_INPUT_SIZE);
+    if (sz == -1) {
+        fprintf(stderr, "Failed to read the input byte\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for (ssize_t i = 0; i < sz; i++) {
+        switch (c[i]) {
+            case EOT:
+                return 1;
+            case ESC:
+                if (i == sz - 1) break; // normal ESC
+                if (c[i+1] == CSI) {
+                    i++;
+                    i = process_CSI_code(c, i, sz);
+                } else {
+                    // TODO: handle non-CSI control code
+                    fprintf(stderr, "Non-CSI control code: %hhx, abort\n", c[i+1]);
+                    exit(EXIT_FAILURE);
+                }
+                break;
+            default:
+                /* printf("[%02hhx]\n", c[i]); */
+                putchar(c[i]);
+                break;
+        }
+    }
+
+    return 0;
 }
 
 int main(int argc, char* argv[])
 {
-    char c;
+    bool stop;
 
     if (argc != 2) {
         fprintf(stderr, "Usage: %s file\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    init();
-    read_file_to_edit(argv[1]);
+    init(argv[1]);
+    read_file_content_if_exist();
     render_init_screen();
 
-    while (1)
-    {
-        read(STDIN_FILENO, &c, 1);
-        if (c == '\004') {        /* C-d */
-            break;
-        }
-        else {
-            putchar(c);
-            /* printf("[%02hhx]\n", c); */
-        }
+    stop = 0;
+    while (!stop) {
+        stop = process_keystroke();
+        render_screen();
     }
 
     cleanup();

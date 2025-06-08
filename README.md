@@ -46,6 +46,10 @@ A mini text editor written from scratch.
 - How to store the editing content, both lines and chars in a line, for efficent insertion and deletion?
     - *Gap Buffer* and *Chunked Arrays* seem to be the common option, but too complicated for this demo.
     - => Just store a line as a char array and realloc each time it changed and store lines as an array of the pointers to each line.
+- Normal ESC and control code both start with `ESC`, how to distinguish them?
+    - look ahead and push back? -> complicated
+    - set VMIN and VTIME properly
+    - set stdin to non-block
 
 ## Terminal Control Mode
 ### Local Mode
@@ -75,6 +79,10 @@ A mini text editor written from scratch.
 - `OPOST`: output data is processed in some unspecified way so that it is displayed appropriately on the terminal device. If not set, the characters are sent as-is. For example, `stty -a` shows the terminal options in a well-formatted way, but if you set `stty -opost` and `stty -a` again, the `\n` doesn't automatically return to the beginning of the line, and, thus, mess up the display format.
 - `ONLCR`: convert the newline character `\n` on output into carriage return `\r` followed by linefeed `\n`. For example, `stty -onlcr` also cause `\n` to not automatically return to the beginning of the line and mess up the display format.
 - `OXTABS`: convert the tab characters `\t` on output into the appropriate number of spaces to emulate a tab stop every eight columns. For example, type `echo "a\tb"` and select the tab with mouse get a big chunk of one single space. But `stty oxtabs` then `echo "a\tb"`, the space become multiple single-char spaces.
+
+### Noncanonical Mode
+- `VMIN`: specify the min number of bytes that must be available in the input queue in order for read to return.
+- `VTIME`: specify how long to wait for input before returning, in units of 0.1 seconds.
 
 ## ANSI Control Code Table
 - [my notes on ECMA-48](https://app.heptabase.com/fe2dcb7b-fdfc-4173-a112-aaa81e688360/card/6c9de788-1b27-4a16-9173-51af63b9da51)
