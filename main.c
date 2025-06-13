@@ -9,6 +9,7 @@
 
 #define LINE_ENLARGE_SIZE 128
 #define READ_INPUT_SIZE    10
+#define STATUS_MSG_SIZE   128
 
 #define  MOVE_CURSOR_UP        "\x1b[A"
 #define  MOVE_CURSOR_DOWN      "\x1b[B"
@@ -20,12 +21,13 @@
 #define  HIDE_CURSOR           "\x1b[?25l"
 #define  SHOW_CURSOR           "\x1b[?25h"
 
-#define ESC 0x1b
-#define CSI 0x5b
+#define  ESC     0x1b
+#define  CSI     0x5b
 
-#define EOT 0x04
-#define  CR 0x0d
-#define DEL 0x7f
+#define  EOT     0x04  //  ctrl-d
+#define  CTRL_S  0x13
+#define  CR      0x0d
+#define  DEL     0x7f
 
 /*
 ## TODO:
@@ -43,8 +45,7 @@
   - [x] delete (not newline): remove
   - [x] delete newline
   - [x] insert newline
-- [ ] store content changes of editing file
-- [ ] write changes to the file
+- [x] write content changes to the file
 - [ ] maybe we dont need to record cursor position, just use CUD/T/L/R
 */
 
@@ -63,11 +64,12 @@ struct termios saved_attributes;
 
 unsigned short ws_row = 0, ws_col = 0;       // ws: window size
 unsigned short cur_row = -1, cur_col = - 1;  // cur: cursor
-unsigned   int ed_row = 0, ed_col = 0;      // ed: edit
+unsigned   int ed_row = 0, ed_col = 0;       // ed: edit
 
 char *file_path = NULL;
 struct content_t content = {NULL, 0, 0};
 
+char status_msg[STATUS_MSG_SIZE] = {'\x00'};
 
 void reset_input_mode(void) {
     tcsetattr(STDIN_FILENO, TCSANOW, &saved_attributes);
@@ -111,7 +113,7 @@ void set_input_mode(void) { /* {{{ */
     tcgetattr(STDIN_FILENO, &tattr);
     tattr.c_iflag &= ~(BRKINT | ICRNL | ISTRIP | IXON);
     //tattr.c_oflag &= ~(OPOST); // likely no difference on non-physical terminal
-    // tattr.c_cflag |= (CS8 | CREAD); // likely no difference on non-physical terminal
+    //tattr.c_cflag |= (CS8 | CREAD); // likely no difference on non-physical terminal
     tattr.c_lflag &= ~(ICANON | ISIG | IEXTEN | ECHO);
     // read wait (VTIME * 0.1) sec before return. if no char, it return 0
     tattr.c_cc[VMIN] = 0;
@@ -202,6 +204,30 @@ void read_file_content_if_exist(void) {/* {{{ */
 
 }/* }}} */
 
+void save_to_file(void) {
+    FILE *fp = NULL;
+    size_t write_sz = 0;
+
+    fp = fopen(file_path, "w");
+    if (!fp) {
+        fprintf(stderr, "Failed to open file %s, %d\n", file_path, errno);
+        exit(EXIT_FAILURE);
+    }
+
+    for (unsigned int i = 0; i < content.len; i++) {
+        // minus 1 for NULL
+        write_sz = fwrite(content.lines[i].buf, sizeof(char), content.lines[i].len - 1, fp);
+        if (write_sz < content.lines[i].len - 1) {
+            fprintf(stderr, "fwrite failed\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    fclose(fp);
+
+    snprintf(status_msg, sizeof(status_msg), "written to file %s", file_path);
+}
+
 void update_cursor_pos_on_screen(void) {
     // cursor position in control code is 1-index
     printf("\x1b[%d;%dH", cur_row+1, cur_col+1);
@@ -216,13 +242,19 @@ void render_screen(void) {
         printf("\n" ERASE_WHOLE_LINE);
 
     printf(MOVE_CURSOR_TOP_LEFT);
-    for (unsigned short r = 0; r < ws_row; r++) {
+    for (unsigned short r = 0; r < ws_row - 1; r++) {
         if (r < content.len) {
             printf("%s", content.lines[r].buf);
         } else {
-            printf("~");
-            printf((r == ws_row-1) ? "" : "\n");  // FIXME: smell
+            printf("~\n");
         }
+    }
+
+    // show status msg on the last line
+    if (status_msg[0] != '\x00') {
+        printf("%s", status_msg);
+    } else {
+        printf("~");
     }
 
     update_cursor_pos_on_screen();
@@ -275,14 +307,15 @@ ssize_t process_CSI_code(const char *c, ssize_t i, const ssize_t sz) {
             cur_col = (cur_col <= 0) ? 0 : (cur_col - 1);
             break;
         default:
-            printf("[%02hhx]\n", c[i]);
+            fprintf(stderr, "Unhandled CSI control code: %hhx, abort\n", c[i]);
+            exit(EXIT_FAILURE);
             break;
     }
 
     return i;
 }
 
-void delete_newline(void) {
+void delete_newline(void) {/* {{{ */
     unsigned int prev_line_len = content.lines[ed_row-1].len;
 
     // realloc the buf of the previous line
@@ -313,9 +346,9 @@ void delete_newline(void) {
     ed_col = prev_line_len - 2;
     cur_row--;
     cur_col = (ed_col >= ws_col - 1) ? (ws_col - 1) : ed_col;
-}
+}/* }}} */
 
-void delete_char(void) {
+void delete_char(void) {/* {{{ */
     // delete on the start of line
     if (ed_col == 0) {
         if (ed_row == 0) return;
@@ -333,9 +366,9 @@ void delete_char(void) {
     content.lines[ed_row].buf[content.lines[ed_row].len-1] = '\x00';
     ed_col--;
     cur_col = (cur_col <= 0) ? 0 : (cur_col - 1);
-}
+}/* }}} */
 
-void insert_newline(void) {
+void insert_newline(void) {/* {{{ */
     // realloc content.lines and move the next line down
     if (content.len >= content.cap) {
         content.cap += LINE_ENLARGE_SIZE;
@@ -371,9 +404,9 @@ void insert_newline(void) {
     ed_col = 0;
     cur_row = (ed_row >= ws_row - 1) ? (ws_row - 1) : ed_row;
     cur_col = 0;
-}
+}/* }}} */
 
-void insert_char(char c) {
+void insert_char(char c) {/* {{{ */
     content.lines[ed_row].buf = realloc(content.lines[ed_row].buf, content.lines[ed_row].len + 1);
 
     memmove(
@@ -388,7 +421,7 @@ void insert_char(char c) {
 
     ed_col++;
     cur_col = (cur_col >= ws_col - 1) ? (ws_col - 1) : (cur_col + 1);
-}
+}/* }}} */
 
 
 bool process_keystroke(void) {
@@ -412,7 +445,7 @@ bool process_keystroke(void) {
                     i = process_CSI_code(c, i, sz);
                 } else {
                     // TODO: handle non-CSI control code
-                    fprintf(stderr, "Non-CSI control code: %hhx, abort\n", c[i+1]);
+                    fprintf(stderr, "Unhanlded Non-CSI control code: %hhx, abort\n", c[i+1]);
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -421,6 +454,9 @@ bool process_keystroke(void) {
                 break;
             case CR:
                 insert_newline();
+                break;
+            case CTRL_S:
+                save_to_file();
                 break;
             default:
                 /* fprintf(stderr, "[%02hhx]\n", c[i]); */

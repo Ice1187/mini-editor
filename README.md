@@ -20,8 +20,7 @@ A mini text editor written from scratch.
   - [x] delete (not newline): remove
   - [x] delete newline
   - [x] insert newline
-- [ ] store content changes of editing file
-- [ ] write changes to the file
+- [x] write content changes to the file
 - [ ] maybe we dont need to record cursor position, just use CUD/T/L/R
 
 ## Minimal PoC Requirement
@@ -38,7 +37,7 @@ A mini text editor written from scratch.
 - on quit: disable RAW mode
 
 ### Optional
-- no resisze window (capture signal `SIGWINCH` to handle window size change)
+- no resize window (capture signal `SIGWINCH` to handle window size change)
 - no status bar
 - don't need to handle TAB
 - no syntax highlight
