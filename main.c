@@ -1,8 +1,9 @@
-#include <stdbool.h>
+#define  _POSIX_C_SOURCE 200809L  // getline is POSIX, not std C
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <termios.h>
 #include <sys/errno.h>
 #include <sys/ioctl.h>
@@ -62,9 +63,9 @@ struct content_t {
 
 struct termios saved_attributes;
 
-unsigned short ws_row = 0, ws_col = 0;       // ws: window size
-unsigned short cur_row = -1, cur_col = - 1;  // cur: cursor
-unsigned   int ed_row = 0, ed_col = 0;       // ed: edit
+unsigned int ws_row = 0, ws_col = 0;       // ws: window size
+unsigned int cur_row = -1, cur_col = - 1;  // cur: cursor
+unsigned int ed_row = 0, ed_col = 0;       // ed: edit
 
 char *file_path = NULL;
 struct content_t content = {NULL, 0, 0};
@@ -186,7 +187,7 @@ void read_file_content_if_exist(void) {/* {{{ */
 
             // TODO: make sure every line end with newline
             content.lines[line_num].buf = line;
-            content.lines[line_num].len = line_len + 1;  // include newline
+            content.lines[line_num].len = line_len + 1;  // include NULL
             content.len += 1;
 
             line = NULL;   // FIXME: smell
